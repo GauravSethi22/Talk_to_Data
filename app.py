@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from main_pipeline import AIQuerySystem
 from layers.layer6_storyteller import QueryResponse
 
+from dotenv import load_dotenv
+load_dotenv()
 
 # Page configuration
 st.set_page_config(

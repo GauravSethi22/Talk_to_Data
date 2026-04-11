@@ -11,6 +11,8 @@ import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 from layers import (
     SemanticCache,
@@ -113,14 +115,21 @@ class AIQuerySystem:
             for schema in schemas:
                 self.tag.add_schema(schema)
             self.logger.info(f"Loaded {len(schemas)} sample schemas into TAG")
+
+            if hasattr(self.tag, 'add_document'):
+                self.tag.add_document(
+                    doc_id="policy_001",
+                    content="COMPANY REFUND POLICY: All customers are entitled to a full refund within 30 days of purchase. The item must be in its original packaging. Contact support@example.com for processing.",
+                    metadata={"source": "employee_handbook"}
+                )
+                self.logger.info("Loaded sample RAG documents into TAG")
+
         except Exception as e:
-            self.logger.warning(f"Could not load sample schemas: {e}")
+            self.logger.warning(f"Could not load sample data: {e}")
 
     def run_pipeline(self, user_query: str) -> QueryResponse:
         start_time = time.time()
 
-        # Step 1: Check cache
-        # FIX: Only return cache hit if it contains actual results (not empty data)
         if self.cache:
             try:
                 cached = self.cache.get(user_query)
@@ -266,7 +275,8 @@ def run_demo():
     demo_queries = [
         "How many customers do we have?",
         "What is the total revenue?",
-        "Show me recent orders"
+        "Show me recent orders",
+        "What is the company refund policy?"
     ]
 
     print("\n" + "=" * 60)
