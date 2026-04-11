@@ -34,22 +34,99 @@ class AIQuerySystem:
     def __init__(self, config_path: Optional[str] = None, load_sample_schemas: bool = True):
         self.logger = logging.getLogger(__name__)
         self.config = self._load_config(config_path)
+        self._auto_setup_database()
         self._initialize_layers()
         if load_sample_schemas:
             self._load_sample_data()
 
     def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
+        config = {}
+
         if config_path and Path(config_path).exists():
             import yaml
             with open(config_path, "r") as f:
-                return yaml.safe_load(f)
-        for path in ["./config/config.yaml", "../config/config.yaml"]:
-            if Path(path).exists():
-                import yaml
-                with open(path, "r") as f:
-                    return yaml.safe_load(f)
-        self.logger.warning("No config.yaml found — using built-in defaults")
-        return {}
+                config = yaml.safe_load(f) or {}
+        else:
+            for path in ["./config/config.yaml", "../config/config.yaml"]:
+                if Path(path).exists():
+                    import yaml
+                    with open(path, "r") as f:
+                        config = yaml.safe_load(f) or {}
+                    break
+
+        if not config:
+            self.logger.warning("No config.yaml found — using built-in defaults")
+
+        config["db_host"] = os.getenv("DB_HOST", config.get("db_host", "localhost"))
+        config["db_port"] = int(os.getenv("DB_PORT", config.get("db_port", 5432)))
+        config["db_name"] = os.getenv("DB_NAME", config.get("db_name", "postgres"))
+        config["db_user"] = os.getenv("DB_USER", config.get("db_user", "postgres"))
+        config["db_password"] = os.getenv("DB_PASSWORD", config.get("db_password", ""))
+
+        config["redis_host"] = os.getenv("REDIS_HOST", config.get("redis_host", "localhost"))
+        config["redis_port"] = int(os.getenv("REDIS_PORT", config.get("redis_port", 6379)))
+
+        return config
+
+    def _auto_setup_database(self):
+        """Automatically provisions the database on a fresh Docker container."""
+        try:
+            # MUST HAVE THESE IMPORTS HERE!
+            import psycopg2
+            from pathlib import Path
+            import os
+            import time
+
+            # Retry loop to wait for Docker to boot up
+            max_retries = 10
+            conn = None
+            for attempt in range(max_retries):
+                try:
+                    conn = psycopg2.connect(
+                        host=self.config.get("db_host", "127.0.0.1"),
+                        port=self.config.get("db_port", 5432),
+                        dbname="postgres",
+                        user="postgres",
+                        password=os.getenv("POSTGRES_PASSWORD", "secret")
+                    )
+                    break  # Success! Break out of the loop
+                except psycopg2.OperationalError:
+                    if attempt < max_retries - 1:
+                        self.logger.info(f"Database starting up... waiting 2 seconds (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(2)
+                    else:
+                        raise  # Out of retries, throw the error
+
+            conn.autocommit = True
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'customers');")
+            if not cursor.fetchone()[0]:
+                self.logger.info("Fresh database detected. Running auto-setup...")
+
+                sql_path = Path("setup_db.sql")
+                if sql_path.exists():
+                    with open(sql_path, "r") as f:
+                        sql = f.read()
+
+                    # Inject config values
+                    db_name = self.config.get("db_name", "postgres")
+                    db_pass = self.config.get("db_password", "1234")
+
+                    sql = sql.replace("yourdatabase", db_name)
+                    sql = sql.replace("CREATE ROLE ai_readonly LOGIN;", f"CREATE ROLE ai_readonly LOGIN PASSWORD '{db_pass}';")
+                    sql = sql.replace("ALTER ROLE ai_readonly WITH PASSWORD '1234';", f"ALTER ROLE ai_readonly WITH PASSWORD '{db_pass}';")
+
+                    cursor.execute(sql)
+                    self.logger.info("Database auto-setup completed successfully!")
+                else:
+                    self.logger.warning("setup_db.sql not found. Cannot auto-setup database.")
+
+            conn.close()
+
+        except Exception as e:
+            # This will now tell us EXACTLY what broke if it fails again
+            self.logger.error(f"Auto-setup completely failed: {e}")
 
     def _initialize_layers(self):
         # Layer 1: Semantic Cache

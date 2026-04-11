@@ -8,9 +8,9 @@ redis_db: 0
 # PostgreSQL — update these to match your setup
 db_host: "localhost"
 db_port: 5432
-db_name: "yourdatabase"        # default DB name if you used: docker run postgres
-db_user: "ai_readonly"        # default superuser
-db_password: "1234" # the password you set in docker run -e POSTGRES_PASSWORD=
+db_name: "postgres"
+db_user: "ai_readonly"
+db_password: "1234"
 
 # ChromaDB
 chroma_persist_dir: "./data/chroma_db"

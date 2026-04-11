@@ -8,6 +8,8 @@ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+ALTER ROLE ai_readonly WITH PASSWORD '1234';
+
 -- Grant connect on database
 GRANT CONNECT ON DATABASE yourdatabase TO ai_readonly;
 
