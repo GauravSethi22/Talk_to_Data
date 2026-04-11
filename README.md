@@ -1,4 +1,4 @@
-# AI Query System
+# Talk to Data
 
 A 6-layer AI-powered natural language to SQL/data pipeline system powered by **Groq API** for ultra-fast LLM inference.
 
