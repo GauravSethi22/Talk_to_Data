@@ -1,0 +1,41 @@
+# AI Query System Configuration
+
+# Redis
+redis_host: "localhost"
+redis_port: 6379
+redis_db: 0
+
+# PostgreSQL — update these to match your setup
+db_host: "localhost"
+db_port: 5432
+db_name: "yourdatabase"        # default DB name if you used: docker run postgres
+db_user: "ai_readonly"        # default superuser
+db_password: "1234" # the password you set in docker run -e POSTGRES_PASSWORD=
+
+# ChromaDB
+chroma_persist_dir: "./data/chroma_db"
+
+# Layer configs
+semantic_cache:
+  ttl_seconds: 3600
+  similarity_threshold: 0.92
+  embedding_model: "all-MiniLM-L6-v2"
+
+intent_router:
+  model: "llama-3.1-8b-instant"
+  temperature: 0.0
+
+multi_agent_sql:
+  planner_model:   "llama-3.3-70b-versatile"
+  coder_model:     "llama-3.3-70b-versatile"
+  validator_model: "llama-3.1-8b-instant"
+  temperature: 0.0
+  max_retries: 3
+
+storyteller:
+  model: "llama-3.3-70b-versatile"
+  temperature: 0.3
+  max_sentences: 3
+
+logging:
+  lineage_log_path: "./data/lineage_logs.jsonl"
