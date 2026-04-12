@@ -121,18 +121,29 @@ class TAGRetrieval:
     def add_schemas(self, tables: List[TableDescription]) -> List[str]:
         return [self.add_schema(table) for table in tables]
 
-    def retrieve_schemas(self, query: str, top_k: int = 3) -> List[TableDescription]:
+# Update the method signature to accept where_filter
+    def retrieve_schemas(self, query: str, top_k: int = 3, where_filter: Optional[Dict[str, str]] = None) -> List[TableDescription]:
+        if self.schema_collection.count() == 0:
+            return []
+
         query_embedding = self.model.encode(query).tolist()
-        results = self.schema_collection.query(
-            query_embeddings=[query_embedding],
-            n_results=min(top_k, self.schema_collection.count() or 1)
-        )
+
+        # Build the query arguments dynamically
+        query_kwargs = {
+            "query_embeddings": [query_embedding],
+            "n_results": min(top_k, self.schema_collection.count())
+        }
+
+        # Apply the hard filter if it exists
+        if where_filter:
+            query_kwargs["where"] = where_filter
+
+        results = self.schema_collection.query(**query_kwargs)
 
         tables = []
         if results and results["ids"]:
             for i, _ in enumerate(results["ids"][0]):
                 metadata = results["metadatas"][0][i]
-                # FIX: Use from_metadata() to deserialize JSON strings back
                 tables.append(TableDescription.from_metadata(metadata))
         return tables
 

@@ -246,19 +246,43 @@ class AIQuerySystem:
         self,
         user_query: str,
         context_filter: Optional[Dict[str, Any]] = None,
-        authorized_docs: Optional[list] = None,
+        authorized_docs: Optional[List[str]] = None,
         target_source: Optional[str] = None
         ) -> QueryResponse:
-        self.logger.info(f"Query: {user_query}")
         start_time = time.time()
+        self.logger.info(f"Query: {user_query}")
 
-        # Step 1: Routing
-        route_result = self.router.route(user_query)
-        route = route_result["route"]
+        # Step 1: Semantic Cache Check
+        if self.cache:
+            try:
+                cache_key = user_query
+                if context_filter:
+                    cache_key = f"{user_query}__CTX__{str(context_filter)}"
 
-        # ==========================================
-        # NEW: SMART ROUTING OVERRIDE based on File Type
-        # ==========================================
+                cached = self.cache.get(cache_key)
+                if cached:
+                    cached_results = cached.get("metadata", {}).get("results")
+                    if cached_results:
+                        self.logger.info(f"[CACHE HIT] similarity={cached.get('similarity', 0):.3f}")
+                        lineage = self.storyteller.create_lineage(
+                            query=user_query, route="cache",
+                            cache_hit=True, cache_similarity=cached.get("similarity"),
+                            execution_time_ms=0
+                        )
+                        return QueryResponse(
+                            answer=cached["answer"],
+                            lineage=lineage,
+                            raw_results=cached_results
+                        )
+            except Exception as e:
+                self.logger.warning(f"Cache lookup failed: {e}")
+
+        # Step 2: Route query & Smart Override
+        import re
+        routing = self.router.route(user_query)
+        route = routing.get("route", "sql")
+        inferred_schemas = routing.get("schemas", [])
+
         if target_source:
             structured_exts = ['.csv', '.xlsx', '.xls', '.json']
             unstructured_exts = ['.pdf', '.txt', '.docx', '.md']
@@ -266,35 +290,43 @@ class AIQuerySystem:
             target_lower = target_source.lower()
             if any(target_lower.endswith(ext) for ext in structured_exts):
                 if route == "rag":
-                    route = "sql"  # Force SQL for spreadsheets
+                    route = "sql"
                     self.logger.info(f"[ROUTER OVERRIDE] Forced SQL route for structured file: {target_source}")
             elif any(target_lower.endswith(ext) for ext in unstructured_exts):
                 if route == "sql":
-                    route = "rag"  # Force RAG for documents
+                    route = "rag"
                     self.logger.info(f"[ROUTER OVERRIDE] Forced RAG route for unstructured file: {target_source}")
-        # ==========================================
 
-        # Step 2: Semantic Cache Check
-        cache_hit = False
-        cached_result = self.cache.get(user_query)
-        if cached_result:
-            self.logger.info("[CACHE] Hit found")
-            cache_hit = True
-            return QueryResponse(
-                answer=cached_result["answer"],
-                lineage=LineageTrace(**cached_result["lineage"])
-            )
+        self.logger.info(f"[ROUTER] route={route} | inferred_schemas={inferred_schemas}")
+
+        # Setup Search Term (Handling @mentions)
+        mentions = re.findall(r"@([a-zA-Z0-9_.\-]+)", user_query)
+        combined_hints = []
+        for m in mentions:
+            if m not in combined_hints: combined_hints.append(m)
+        for sc in inferred_schemas:
+            if sc not in combined_hints: combined_hints.append(sc)
+
+        search_term = user_query
+        if combined_hints:
+            search_term = search_term + " " + " ".join(combined_hints)
 
         # Step 3: Retrieve schemas / documents
         schemas, docs, schema_context = [], [], ""
 
         # --- SQL RETRIEVAL ---
         if route in ["sql", "both"]:
-            # Inject the target source into the search query so ChromaDB finds the matching table schema!
-            schema_search_query = f"{user_query} {target_source}" if target_source else user_query
-            schemas = self.tag.retrieve_schemas(schema_search_query, top_k=3)
-            schema_context = "\n\n".join([s.to_document() for s in schemas])
-            self.logger.info(f"[TAG] Retrieved schemas: {[s.table_name for s in schemas]}")
+            schema_where = None
+            if target_source:
+                from pathlib import Path
+                structured_exts = ['.csv', '.xlsx', '.xls', '.json']
+                if any(target_source.lower().endswith(ext) for ext in structured_exts):
+                    target_table = Path(target_source).stem.lower().replace(" ", "_").replace("-", "_")
+                    schema_where = {"table_name": target_table}
+
+            schemas = self.tag.retrieve_schemas(search_term, top_k=2, where_filter=schema_where)
+            schema_context = "\n\n".join([s.to_document()[:800] for s in schemas])
+            self.logger.info(f"[TAG] Retrieved schemas: {[s.table_name for s in schemas]} with filter: {schema_where}")
 
         # --- RAG RETRIEVAL ---
         if route in ["rag", "both"]:
@@ -322,10 +354,10 @@ class AIQuerySystem:
             else:
                 where_filter = None
 
-            docs = self.tag.retrieve_documents(user_query, top_k=5, where_filter=where_filter)
+            docs = self.tag.retrieve_documents(search_term, top_k=5, where_filter=where_filter)
             self.logger.info(f"[TAG] Retrieved {len(docs)} documents with filter: {where_filter}")
 
-        # ... (Leave Step 4: SQL Execution and the rest of the function exactly as it is) ...
+        # Steps 4 & 5: Generate SQL and execute
         sql_results, sql_query, tables_used = None, None, []
 
         if route in ["sql", "both"] and schema_context:
