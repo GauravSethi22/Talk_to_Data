@@ -88,73 +88,302 @@ def load_chat_sessions():
         st.session_state.session_counter = 1
 
 def inject_custom_css():
-    """Inject custom CSS for aesthetic improvements (Gemini style)."""
+    """Inject premium CSS — Gemini-inspired light grey with crisp white on slate accents."""
     st.markdown("""
         <style>
-        /* Hide Default Streamlit UI Noise */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        
-        /* Sleek overall styling - Limit width for readability */
+        /* FONT IMPORTS */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        /* ANIMATIONS */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shimmer {
+            0%   { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        /* No elements hidden — everything visible */
+
+        /* GLOBAL — Gemini light grey */
+        .stApp {
+            background: #f0f4f9 !important;
+            color: #1f2937 !important;
+        }
+        .stApp p, .stApp label, .stMarkdown p, .stTextInput label,
+        .stTextArea label, h1, h2, h3, h4, h5, h6 {
+            font-family: 'Inter', system-ui, sans-serif !important;
+        }
+
+        /* MAIN CONTAINER */
         .block-container {
             padding-top: 2rem !important;
             padding-bottom: 2rem !important;
-            max-width: 900px !important;
+            max-width: 920px !important;
         }
-        
-        /* Metric Styling */
-        div[data-testid="stMetricValue"] {
-            font-size: 20px;
-            font-weight: 500;
-        }
-        
-        /* Title adjustments */
+
+        /* TITLE — slate gradient */
         h1 {
-            font-family: 'Inter', system-ui, sans-serif;
-            font-weight: 600;
-            background: -webkit-linear-gradient(45deg, #4A90E2, #7f8c8d);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-align: center;
-            margin-bottom: 0px;
+            font-weight: 700 !important;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #1e293b, #334155, #475569) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            background-clip: text !important;
+            text-align: center !important;
+            margin-bottom: 0px !important;
         }
-        
-        /* Subtitle */
+
+        /* SUB-HEADERS */
+        h2, h3, h4 {
+            color: #1e293b !important;
+            font-weight: 600 !important;
+        }
+
+        /* SUBTITLE */
         .subtitle {
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             font-weight: 400;
-            color: #7f8c8d;
+            color: #64748b;
             text-align: center;
             margin-bottom: 2rem;
+            letter-spacing: 0.3px;
         }
-        
-        /* Sidebar Chat Thread Menu Customization */
+
+        /* SIDEBAR — slightly darker grey */
+        [data-testid="stSidebar"] {
+            background: #e8ecf1 !important;
+            border-right: 1px solid #d1d5db !important;
+        }
+        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3, [data-testid="stSidebar"] header {
+            color: #1e293b !important;
+            -webkit-text-fill-color: #1e293b !important;
+            background: none !important;
+        }
+        [data-testid="stSidebar"] p, [data-testid="stSidebar"] label {
+            color: #475569 !important;
+        }
+
+        /* Sidebar session buttons */
         [data-testid="stSidebar"] button[kind="tertiary"] {
             justify-content: flex-start;
-            padding-left: 0.5rem;
+            padding: 0.5rem 0.6rem;
             font-weight: 400;
-            opacity: 0.8;
-            transition: all 0.2s;
+            font-size: 0.88rem;
+            color: #475569 !important;
+            border-radius: 8px;
+            transition: all 0.25s cubic-bezier(.4,0,.2,1);
         }
         [data-testid="stSidebar"] button[kind="tertiary"]:hover {
-            opacity: 1.0;
-            background-color: rgba(128, 128, 128, 0.1);
+            color: #1e293b !important;
+            background-color: rgba(30,41,59,0.08) !important;
+            transform: translateX(3px);
         }
-        
-        /* Floating Chat Uploader Adjustments */
-        [data-testid="stPopover"] {
-            padding-top: 1px;
+
+        /* Sidebar primary button — slate with white text */
+        [data-testid="stSidebar"] button[kind="primary"],
+        [data-testid="stSidebar"] button[kind="primary"] p,
+        [data-testid="stSidebar"] button[kind="primary"] span {
+            background: #1e293b !important;
+            border: none !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 600 !important;
+            border-radius: 10px !important;
+            transition: background 0.3s ease, box-shadow 0.3s ease !important;
         }
-        /* Completely hide the arrow icon next to the popover button safely */
-        [data-testid="stPopover"] summary > svg:last-of-type {
+        /* Hover only changes the button background, no text decoration */
+        [data-testid="stSidebar"] button[kind="primary"]:hover {
+            background: #334155 !important;
+            box-shadow: 0 4px 16px rgba(30,41,59,0.25) !important;
+            text-decoration: none !important;
+        }
+        [data-testid="stSidebar"] button[kind="primary"]:hover p,
+        [data-testid="stSidebar"] button[kind="primary"]:hover span {
+            text-decoration: none !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        /* Sidebar toggle — replace arrow with hamburger icon */
+        [data-testid="stSidebarCollapsedControl"] svg,
+        [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg {
             display: none !important;
         }
-        [data-testid="stPopover"] summary {
-            list-style: none !important;
+        [data-testid="stSidebarCollapsedControl"] button::before,
+        [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]::before {
+            content: "☰";
+            font-size: 1.3rem;
+            color: #1e293b;
+            line-height: 1;
         }
-        [data-testid="stPopover"] summary::-webkit-details-marker {
-            display: none !important;
+
+        /* CHAT BUBBLES — clean white cards */
+        [data-testid="stChatMessage"] {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 14px !important;
+            padding: 1rem 1.2rem !important;
+            margin-bottom: 0.75rem !important;
+            animation: fadeInUp 0.35s ease-out !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+            transition: box-shadow 0.3s ease !important;
         }
+        [data-testid="stChatMessage"]:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+        }
+        [data-testid="stChatMessage"] p {
+            color: #1f2937 !important;
+            font-size: 0.95rem !important;
+            line-height: 1.75 !important;
+            letter-spacing: 0.1px !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+
+        /* METRICS */
+        div[data-testid="stMetricValue"] {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1e293b !important;
+            font-family: 'JetBrains Mono', monospace !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            color: #64748b !important;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        /* BUTTONS — primary (slate with white text) */
+        .stButton > button[kind="primary"] {
+            background: #1e293b !important;
+            border: none !important;
+            color: #f8fafc !important;
+            font-family: 'Inter', sans-serif !important;
+            font-weight: 600 !important;
+            border-radius: 10px !important;
+            padding: 0.55rem 1.2rem !important;
+            transition: all 0.3s ease !important;
+        }
+        .stButton > button[kind="primary"]:hover {
+            transform: translateY(-1px) !important;
+            box-shadow: 0 4px 16px rgba(30,41,59,0.25) !important;
+            background: #334155 !important;
+        }
+        /* BUTTONS — secondary */
+        .stButton > button[kind="secondary"],
+        .stButton > button:not([kind]) {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            color: #334155 !important;
+            font-family: 'Inter', sans-serif !important;
+            border-radius: 10px !important;
+            transition: all 0.25s ease !important;
+        }
+        .stButton > button[kind="secondary"]:hover,
+        .stButton > button:not([kind]):hover {
+            background: #f1f5f9 !important;
+            border-color: #94a3b8 !important;
+            transform: translateY(-1px) !important;
+        }
+
+        /* INPUT FIELDS */
+        .stTextInput input, .stTextArea textarea {
+            background: #ffffff !important;
+            border: 1px solid #d1d5db !important;
+            color: #1f2937 !important;
+            border-radius: 10px !important;
+            font-family: 'Inter', sans-serif !important;
+            transition: all 0.3s ease !important;
+        }
+        .stTextInput input:focus, .stTextArea textarea:focus {
+            border-color: #475569 !important;
+            box-shadow: 0 0 0 3px rgba(71,85,105,0.1) !important;
+        }
+        .stTextInput label, .stTextArea label {
+            color: #475569 !important;
+            font-weight: 500 !important;
+        }
+
+        /* CHAT INPUT BAR */
+        [data-testid="stChatInput"] {
+            background: #ffffff !important;
+            border: 1px solid #d1d5db !important;
+            border-radius: 14px !important;
+        }
+        [data-testid="stChatInput"] textarea {
+            color: #1f2937 !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+
+        /* EXPANDER */
+        .streamlit-expanderHeader {
+            background: #f8fafc !important;
+            border-radius: 10px !important;
+            color: #475569 !important;
+            font-family: 'Inter', sans-serif !important;
+            font-weight: 500 !important;
+            transition: all 0.25s ease !important;
+        }
+        .streamlit-expanderHeader:hover {
+            color: #1e293b !important;
+            background: #f1f5f9 !important;
+        }
+
+        /* CODE BLOCKS */
+        code, .stCode, pre {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 8px !important;
+            color: #334155 !important;
+        }
+
+        /* TABS */
+        .stTabs [data-baseweb="tab"] {
+            font-family: 'Inter', sans-serif !important;
+            color: #64748b !important;
+            font-weight: 500 !important;
+        }
+        .stTabs [aria-selected="true"] {
+            color: #1e293b !important;
+        }
+        .stTabs [data-baseweb="tab-highlight"] {
+            background-color: #1e293b !important;
+        }
+
+        /* ALERTS */
+        .stAlert {
+            border-radius: 10px !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+
+        /* POPOVER */
+        [data-testid="stPopover"] { padding-top: 1px; }
+        [data-testid="stPopover"] summary > svg:last-of-type { display: none !important; }
+        [data-testid="stPopover"] summary { list-style: none !important; }
+        [data-testid="stPopover"] summary::-webkit-details-marker { display: none !important; }
+
+        /* SCROLLBAR */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* FILE UPLOADER */
+        [data-testid="stFileUploader"] section {
+            border: 1px dashed #cbd5e1 !important;
+            border-radius: 10px !important;
+            background: #ffffff !important;
+        }
+
+        /* DIVIDER */
+        hr { border-color: #e2e8f0 !important; }
+
+        /* MULTISELECT */
+        .stMultiSelect, .stSelectbox { font-family: 'Inter', sans-serif !important; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -213,15 +442,65 @@ def parse_and_add_documents(uploaded_files):
             st.error(f"Failed to process {file.name}: {str(e)}")
 
 
+def render_loading_screen():
+    """Show a premium animated loading screen while the AI system boots."""
+    loading_html = """
+    <div style="
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        min-height: 70vh; animation: fadeInUp 0.5s ease-out;
+        font-family: 'Inter', sans-serif;
+    ">
+        <div style="
+            width: 48px; height: 48px; border-radius: 50%;
+            border: 3px solid #e2e8f0; border-top-color: #334155;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 2rem;
+        "></div>
+        <h2 style="
+            font-size: 1.5rem; font-weight: 600; color: #1e293b;
+            margin-bottom: 0.5rem; letter-spacing: -0.3px;
+        ">Nexus Intelligence</h2>
+        <p style="color: #64748b; font-size: 0.92rem; margin-bottom: 1.5rem;">Initializing AI Query Engine</p>
+        <div style="
+            width: 220px; height: 4px; background: #e2e8f0; border-radius: 4px; overflow: hidden;
+        ">
+            <div style="
+                width: 100%; height: 100%;
+                background: linear-gradient(90deg, transparent, #475569, transparent);
+                background-size: 200% 100%;
+                animation: shimmer 1.5s infinite;
+            "></div>
+        </div>
+        <p style="color: #94a3b8; font-size: 0.75rem; margin-top: 1.2rem; letter-spacing: 0.5px;">
+            Connecting to databases, loading models & cache layers
+        </p>
+    </div>
+    <style>
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes shimmer {
+            0%   { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+    </style>
+    """
+    st.markdown(loading_html, unsafe_allow_html=True)
+
+
 def initialize_session_state():
     """Initialize Streamlit session state and Chat Session Tracking."""
     if "query_system" not in st.session_state:
-        with st.spinner("Initializing AI Query System..."):
-            try:
-                st.session_state.query_system = AIQuerySystem()
-            except Exception as e:
-                st.error(f"Initialization failed: {str(e)}")
-                st.session_state.query_system = None
+        # Show the custom loading screen while initializing
+        loading_placeholder = st.empty()
+        with loading_placeholder.container():
+            render_loading_screen()
+        try:
+            st.session_state.query_system = AIQuerySystem()
+        except Exception as e:
+            st.error(f"Initialization failed: {str(e)}")
+            st.session_state.query_system = None
+        loading_placeholder.empty()
                 
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -273,6 +552,18 @@ def display_lineage(lineage):
 def render_sidebar():
     """Render the sidebar carefully engineered like Gemini."""
     with st.sidebar:
+        # Product branding at top
+        st.markdown("""
+            <div style="
+                display: flex; align-items: center; gap: 0.5rem;
+                padding: 0.2rem 0 0.8rem 0;
+                border-bottom: 1px solid #d1d5db;
+                margin-bottom: 1rem;
+            ">
+                <span style="font-family: 'Inter', sans-serif; font-weight: 700; font-size: 1.1rem; color: #1e293b; letter-spacing: -0.3px;">Nexus Intelligence</span>
+            </div>
+        """, unsafe_allow_html=True)
+
         # Top Native Button
         if st.button("New Chat", icon=":material/add:", type="primary", use_container_width=True):
             st.session_state.session_counter += 1
@@ -300,10 +591,10 @@ def render_sidebar():
                 st.session_state.current_session_id = session_id
                 st.rerun()
 
-        # Add vertical whitespace to push settings to bottom
-        st.markdown("<br>"*5, unsafe_allow_html=True)
+        # Spacer to keep settings from overlapping chat list
+        st.markdown("<br>" * 3, unsafe_allow_html=True)
         
-        # Advanced Technical Settings in a neat expander
+        # Settings pinned at bottom via CSS
         with st.expander("Settings & Resources", icon=":material/settings:", expanded=False):
             st.caption("System Resources")
             if st.session_state.query_system:
@@ -332,12 +623,16 @@ def render_sidebar():
 
 def render_auth_screen():
     """Render a premium front-end login gateway (Logic mocked per user request)."""
-    st.write("<br><br>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style="text-align: center; padding-top: 4rem; animation: fadeInUp 0.7s ease-out;">
+            <div style="display: inline-block; padding: 0.6rem 1.4rem; border: 1px solid rgba(20,184,166,0.3); border-radius: 50px; margin-bottom: 1.5rem; font-size: 0.78rem; color: #2dd4bf; letter-spacing: 1.5px; text-transform: uppercase; font-family: 'Inter', sans-serif;">Secure Access Portal</div>
+        </div>
+    """, unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center; margin-bottom: 0px;'>Nexus Intelligence</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #7f8c8d; margin-bottom: 3rem;'>Enterprise Knowledge & Semantic RAG Engine</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #6e7681; margin-bottom: 2.5rem; font-family: Inter, sans-serif; font-size: 1rem;'>Enterprise Knowledge & Semantic RAG Engine</p>", unsafe_allow_html=True)
     
     # To make the login box wider, we increase the middle column's ratio.
-    col1, col2, col3 = st.columns([1, 1.6, 1])
+    col1, col2, col3 = st.columns([1, 2.0, 1])
     with col2:
         with st.container(border=True):
             tab1, tab2 = st.tabs(["Log In", "Sign Up"])
@@ -368,10 +663,15 @@ def render_auth_screen():
 
 def render_welcome_screen():
     """Render exactly like the Google Gemini welcome screen with contextual ideas."""
-    st.markdown("<h3 style='text-align: center; margin-top: 4rem; font-family: Inter, sans-serif;'>Hello. How can I help you today?</h3>", unsafe_allow_html=True)
-    st.write("<br><br>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style="text-align: center; margin-top: 3rem; animation: fadeInUp 0.5s ease-out;">
+            <h2 style="font-size: 1.8rem; font-weight: 600; background: linear-gradient(135deg, #c9d1d9, #2dd4bf); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.4rem;">Hello. How can I help you today?</h2>
+            <p style="color: #6e7681; font-size: 0.92rem; font-family: 'Inter', sans-serif;">Ask me anything about your data, or try one of the suggestions below.</p>
+        </div>
+    """, unsafe_allow_html=True)
+    st.write("<br>", unsafe_allow_html=True)
     
-    st.markdown("#### Quick actions & ideas from your context")
+    st.markdown("<h4 style='font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.2px; color: #6e7681 !important; -webkit-text-fill-color: #6e7681 !important; background: none !important; font-weight: 600;'>Quick actions & ideas from your context</h4>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)
     
     # Base examples just in case there is no history yet!
@@ -421,6 +721,8 @@ def main():
     inject_custom_css()
     initialize_session_state()
     
+  
+    
     # Gateway Security Intercept (UI Only Mock)
     if not st.session_state.get("authenticated", False):
         render_auth_screen()
@@ -431,7 +733,6 @@ def main():
     st.markdown('<p class="subtitle">Enterprise Knowledge & Semantic RAG Engine</p>', unsafe_allow_html=True)
 
     render_sidebar()
-
     # Render Welcome Screen OR History
     if len(st.session_state.messages) == 0:
         render_welcome_screen()
