@@ -32,3 +32,7 @@ streamlit>=1.28.0
 gradio>=4.0.0
 
 python-dotenv
+
+# Authentication & Database
+pymongo>=4.6.0
+bcrypt>=4.1.2

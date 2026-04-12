@@ -18,6 +18,21 @@ from layers.layer6_storyteller import QueryResponse, LineageTrace
 from dotenv import load_dotenv
 load_dotenv()
 
+import pymongo
+import bcrypt
+
+
+@st.cache_resource
+def get_db():
+    mongo_uri = os.environ.get("MONGO_URI")
+    # Add timeout settings so Streamlit doesn't hang if offline
+    client = pymongo.MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    return client["nexus_intelligence"]
+
+db = get_db()
+users_collection = db["users"]
+chats_collection = db["chat_histories"]
+
 # Page configuration
 st.set_page_config(
     page_title="Nexus Intelligence",
@@ -28,64 +43,175 @@ st.set_page_config(
 
 CHAT_HISTORY_FILE = "./data/chat_history.json"
 
+# def save_chat_sessions():
+#     """Serialize and save chat sessions securely to disk to prevent refresh loss."""
+#     os.makedirs("./data", exist_ok=True)
+#     try:
+#         serializable_sessions = {}
+#         for session_id, messages in st.session_state.chat_sessions.items():
+#             serializable_messages = []
+#             for msg in messages:
+#                 ser_msg = {"role": msg["role"], "content": msg["content"]}
+#                 if "lineage" in msg and msg["lineage"]:
+#                     if hasattr(msg["lineage"], 'to_dict'):
+#                         ser_msg["lineage"] = msg["lineage"].to_dict()
+#                     else:
+#                         ser_msg["lineage"] = msg["lineage"]
+#                 serializable_messages.append(ser_msg)
+#             serializable_sessions[session_id] = serializable_messages
+            
+#         with open(CHAT_HISTORY_FILE, "w") as f:
+#             json.dump({
+#                 "chat_sessions": serializable_sessions,
+#                 "session_counter": st.session_state.session_counter
+#             }, f, indent=2)
+#     except Exception as e:
+#         self.logger.error(f"Background Save failed: {e}")
+
+# def load_chat_sessions():
+#     """Load safely persistent chat sessions from disk."""
+#     if os.path.exists(CHAT_HISTORY_FILE):
+#         try:
+#             with open(CHAT_HISTORY_FILE, "r") as f:
+#                 data = json.load(f)
+                
+#             sessions = data.get("chat_sessions", {})
+#             st.session_state.session_counter = data.get("session_counter", 1)
+            
+#             # Rehydrate LineageTrace Dataclasses!
+#             for session_id, messages in sessions.items():
+#                 for msg in messages:
+#                     if "lineage" in msg and msg["lineage"]:
+#                         if isinstance(msg["lineage"], dict):
+#                             valid_keys = LineageTrace.__dataclass_fields__.keys()
+#                             clean_kwargs = {k: v for k, v in msg["lineage"].items() if k in valid_keys}
+#                             msg["lineage"] = LineageTrace(**clean_kwargs)
+                            
+#             st.session_state.chat_sessions = sessions
+#             if sessions:
+#                 st.session_state.current_session_id = list(sessions.keys())[-1]
+#             else:
+#                 st.session_state.chat_sessions = {"Session 1": []}
+#                 st.session_state.current_session_id = "Session 1"
+#         except Exception as e:
+#             st.session_state.chat_sessions = {"Session 1": []}
+#             st.session_state.current_session_id = "Session 1"
+#             st.session_state.session_counter = 1
+#     else:
+#         st.session_state.chat_sessions = {"Session 1": []}
+#         st.session_state.current_session_id = "Session 1"
+#         st.session_state.session_counter = 1
+
+
 def save_chat_sessions():
-    """Serialize and save chat sessions securely to disk to prevent refresh loss."""
-    os.makedirs("./data", exist_ok=True)
+    """Serialize, OPTIMIZE, and save chat sessions to MongoDB."""
+    user_email = st.session_state.get("user_email")
+    if not user_email:
+        return
+
+    MAX_SESSIONS = 10  # Cap sessions to prevent MongoDB 512MB limit bloat
+
     try:
+        # 1. Cap the number of sessions (Keep the 10 most recent)
+        session_keys = list(st.session_state.chat_sessions.keys())
+        if len(session_keys) > MAX_SESSIONS:
+            for old_key in session_keys[:-MAX_SESSIONS]:
+                del st.session_state.chat_sessions[old_key]
+
         serializable_sessions = {}
         for session_id, messages in st.session_state.chat_sessions.items():
             serializable_messages = []
+            
             for msg in messages:
                 ser_msg = {"role": msg["role"], "content": msg["content"]}
+                
+                if "feedback" in msg: 
+                    ser_msg["feedback"] = msg["feedback"]
+
+                # 2. PRUNE HEAVY DATA: Do NOT save raw_docs to MongoDB
+                if "raw_docs" in msg:
+                    ser_msg["raw_docs"] = [{"id": "System optimized: Context hidden in history", "content": "..."}]
+
+                # 3. TRUNCATE LINEAGE: Only save vital metrics to save space
                 if "lineage" in msg and msg["lineage"]:
-                    if hasattr(msg["lineage"], 'to_dict'):
-                        ser_msg["lineage"] = msg["lineage"].to_dict()
+                    lin = msg["lineage"]
+                    if hasattr(lin, 'to_dict'):
+                        lin_dict = lin.to_dict()
                     else:
-                        ser_msg["lineage"] = msg["lineage"]
+                        lin_dict = lin
+                    
+                    # Only keep the small, vital stats
+                    ser_msg["lineage"] = {
+                        "query": lin_dict.get("query", ""),
+                        "route": lin_dict.get("route", ""),
+                        "sql_run": lin_dict.get("sql_run", ""),
+                        "cache_hit": lin_dict.get("cache_hit", False),
+                        "execution_time_ms": lin_dict.get("execution_time_ms", 0)
+                    }
+
                 serializable_messages.append(ser_msg)
             serializable_sessions[session_id] = serializable_messages
             
-        with open(CHAT_HISTORY_FILE, "w") as f:
-            json.dump({
+        # Upsert into MongoDB
+        chats_collection.update_one(
+            {"email": user_email},
+            {"$set": {
                 "chat_sessions": serializable_sessions,
                 "session_counter": st.session_state.session_counter
-            }, f, indent=2)
+            }},
+            upsert=True
+        )
     except Exception as e:
-        self.logger.error(f"Background Save failed: {e}")
+        st.error(f"Background Save failed: {e}")
 
 def load_chat_sessions():
-    """Load safely persistent chat sessions from disk."""
-    if os.path.exists(CHAT_HISTORY_FILE):
-        try:
-            with open(CHAT_HISTORY_FILE, "r") as f:
-                data = json.load(f)
-                
-            sessions = data.get("chat_sessions", {})
-            st.session_state.session_counter = data.get("session_counter", 1)
+    """Load persistent chat sessions from MongoDB."""
+    user_email = st.session_state.get("user_email")
+    if not user_email:
+        _reset_local_session()
+        return
+
+    try:
+        user_data = chats_collection.find_one({"email": user_email})
+        if user_data and "chat_sessions" in user_data:
+            sessions = user_data["chat_sessions"]
+            st.session_state.session_counter = user_data.get("session_counter", 1)
             
-            # Rehydrate LineageTrace Dataclasses!
+            # Rehydrate truncated LineageTrace Dataclasses
             for session_id, messages in sessions.items():
                 for msg in messages:
                     if "lineage" in msg and msg["lineage"]:
-                        if isinstance(msg["lineage"], dict):
-                            valid_keys = LineageTrace.__dataclass_fields__.keys()
-                            clean_kwargs = {k: v for k, v in msg["lineage"].items() if k in valid_keys}
-                            msg["lineage"] = LineageTrace(**clean_kwargs)
+                        lin_data = msg["lineage"]
+                        msg["lineage"] = LineageTrace(
+                            query=lin_data.get("query", ""),
+                            route=lin_data.get("route", ""),
+                            sql_run=lin_data.get("sql_run", None),
+                            tables_used=[],           # Pruned for storage
+                            schemas_retrieved=[],     # Pruned for storage
+                            documents_retrieved=[],   # Pruned for storage
+                            cache_hit=lin_data.get("cache_hit", False),
+                            cache_similarity=None,
+                            execution_time_ms=lin_data.get("execution_time_ms", 0),
+                            timestamp=""
+                        )
                             
             st.session_state.chat_sessions = sessions
             if sessions:
                 st.session_state.current_session_id = list(sessions.keys())[-1]
             else:
-                st.session_state.chat_sessions = {"Session 1": []}
-                st.session_state.current_session_id = "Session 1"
-        except Exception as e:
-            st.session_state.chat_sessions = {"Session 1": []}
-            st.session_state.current_session_id = "Session 1"
-            st.session_state.session_counter = 1
-    else:
-        st.session_state.chat_sessions = {"Session 1": []}
-        st.session_state.current_session_id = "Session 1"
-        st.session_state.session_counter = 1
+                _reset_local_session()
+        else:
+            _reset_local_session()
+            
+    except Exception as e:
+        st.error(f"Failed to load chat sessions: {e}")
+        _reset_local_session()
+
+def _reset_local_session():
+    """Helper to reset UI state."""
+    st.session_state.chat_sessions = {"Session 1": []}
+    st.session_state.current_session_id = "Session 1"
+    st.session_state.session_counter = 1
 
 def inject_custom_css():
     """Inject premium CSS — Gemini-inspired light grey with crisp white on slate accents."""
@@ -614,15 +740,65 @@ def render_sidebar():
                     save_chat_sessions()
                     st.rerun()
                     
+                # st.divider()
+                # if st.button("Logout", icon=":material/logout:", use_container_width=True):
+                #     st.session_state.authenticated = False
+                #     st.rerun()
                 st.divider()
                 if st.button("Logout", icon=":material/logout:", use_container_width=True):
+                    # Clear session data securely on logout
                     st.session_state.authenticated = False
+                    st.session_state.user_email = None
+                    st.session_state.user_name = None
+                    st.session_state.chat_sessions = {}
+                    st.session_state.messages = []
+                    _reset_local_session()
                     st.rerun()
             else:
                 st.warning("System Offline")
 
+# def render_auth_screen():
+#     """Render a premium front-end login gateway (Logic mocked per user request)."""
+#     st.markdown("""
+#         <div style="text-align: center; padding-top: 4rem; animation: fadeInUp 0.7s ease-out;">
+#             <div style="display: inline-block; padding: 0.6rem 1.4rem; border: 1px solid rgba(20,184,166,0.3); border-radius: 50px; margin-bottom: 1.5rem; font-size: 0.78rem; color: #2dd4bf; letter-spacing: 1.5px; text-transform: uppercase; font-family: 'Inter', sans-serif;">Secure Access Portal</div>
+#         </div>
+#     """, unsafe_allow_html=True)
+#     st.markdown("<h1 style='text-align: center; margin-bottom: 0px;'>Nexus Intelligence</h1>", unsafe_allow_html=True)
+#     st.markdown("<p style='text-align: center; color: #6e7681; margin-bottom: 2.5rem; font-family: Inter, sans-serif; font-size: 1rem;'>Enterprise Knowledge & Semantic RAG Engine</p>", unsafe_allow_html=True)
+    
+#     # To make the login box wider, we increase the middle column's ratio.
+#     col1, col2, col3 = st.columns([1, 2.0, 1])
+#     with col2:
+#         with st.container(border=True):
+#             tab1, tab2 = st.tabs(["Log In", "Sign Up"])
+            
+#             with tab1:
+#                 st.markdown("### Welcome Back")
+#                 st.caption("Please authenticate to access your Nexus Data Warehouse.")
+#                 st.text_input("Work Email", placeholder="name@company.com", key="login_email")
+#                 st.text_input("Password", type="password", key="login_pass")
+#                 st.write("")
+#                 if st.button("Secure Login", icon=":material/login:", use_container_width=True, type="primary"):
+#                     # Dummy logic - immediately pass through
+#                     st.session_state.authenticated = True
+#                     st.rerun()
+                    
+#             with tab2:
+#                 st.markdown("### Create Account")
+#                 st.caption("Your data remains isolated under Enterprise standards.")
+#                 st.text_input("Full Name", placeholder="Jane Doe")
+#                 st.text_input("Work Email", placeholder="name@company.com", key="signup_email")
+#                 st.text_input("Password", type="password", key="signup_pass")
+#                 st.write("")
+#                 if st.button("Register Account", icon=":material/person_add:", use_container_width=True, type="primary"):
+#                     st.toast("Registration Successful! Signing you in...", icon=":material/check_circle:")
+#                     st.session_state.authenticated = True
+#                     st.rerun()
+
+
 def render_auth_screen():
-    """Render a premium front-end login gateway (Logic mocked per user request)."""
+    """Render a premium front-end login gateway (Connected to MongoDB)."""
     st.markdown("""
         <div style="text-align: center; padding-top: 4rem; animation: fadeInUp 0.7s ease-out;">
             <div style="display: inline-block; padding: 0.6rem 1.4rem; border: 1px solid rgba(20,184,166,0.3); border-radius: 50px; margin-bottom: 1.5rem; font-size: 0.78rem; color: #2dd4bf; letter-spacing: 1.5px; text-transform: uppercase; font-family: 'Inter', sans-serif;">Secure Access Portal</div>
@@ -631,7 +807,6 @@ def render_auth_screen():
     st.markdown("<h1 style='text-align: center; margin-bottom: 0px;'>Nexus Intelligence</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #6e7681; margin-bottom: 2.5rem; font-family: Inter, sans-serif; font-size: 1rem;'>Enterprise Knowledge & Semantic RAG Engine</p>", unsafe_allow_html=True)
     
-    # To make the login box wider, we increase the middle column's ratio.
     col1, col2, col3 = st.columns([1, 2.0, 1])
     with col2:
         with st.container(border=True):
@@ -640,26 +815,50 @@ def render_auth_screen():
             with tab1:
                 st.markdown("### Welcome Back")
                 st.caption("Please authenticate to access your Nexus Data Warehouse.")
-                st.text_input("Work Email", placeholder="name@company.com", key="login_email")
-                st.text_input("Password", type="password", key="login_pass")
+                login_email = st.text_input("Work Email", placeholder="name@company.com", key="login_email")
+                login_pass = st.text_input("Password", type="password", key="login_pass")
                 st.write("")
                 if st.button("Secure Login", icon=":material/login:", use_container_width=True, type="primary"):
-                    # Dummy logic - immediately pass through
-                    st.session_state.authenticated = True
-                    st.rerun()
+                    if not login_email or not login_pass:
+                        st.error("Please fill in both fields.")
+                    else:
+                        user = users_collection.find_one({"email": login_email})
+                        if user and bcrypt.checkpw(login_pass.encode('utf-8'), user["password"]):
+                            st.session_state.authenticated = True
+                            st.session_state.user_email = login_email
+                            st.session_state.user_name = user.get("name", "User")
+                            load_chat_sessions() 
+                            st.rerun()
+                        else:
+                            st.error("Invalid email or password.")
                     
             with tab2:
                 st.markdown("### Create Account")
                 st.caption("Your data remains isolated under Enterprise standards.")
-                st.text_input("Full Name", placeholder="Jane Doe")
-                st.text_input("Work Email", placeholder="name@company.com", key="signup_email")
-                st.text_input("Password", type="password", key="signup_pass")
+                signup_name = st.text_input("Full Name", placeholder="Jane Doe")
+                signup_email = st.text_input("Work Email", placeholder="name@company.com", key="signup_email")
+                signup_pass = st.text_input("Password", type="password", key="signup_pass")
                 st.write("")
                 if st.button("Register Account", icon=":material/person_add:", use_container_width=True, type="primary"):
-                    st.toast("Registration Successful! Signing you in...", icon=":material/check_circle:")
-                    st.session_state.authenticated = True
-                    st.rerun()
-
+                    if not signup_name or not signup_email or not signup_pass:
+                        st.error("Please fill in all fields.")
+                    elif users_collection.find_one({"email": signup_email}):
+                        st.error("An account with this email already exists.")
+                    elif len(signup_pass) < 6:
+                        st.error("Password must be at least 6 characters.")
+                    else:
+                        hashed_pw = bcrypt.hashpw(signup_pass.encode('utf-8'), bcrypt.gensalt())
+                        users_collection.insert_one({
+                            "name": signup_name,
+                            "email": signup_email,
+                            "password": hashed_pw
+                        })
+                        st.toast("Registration Successful! Logging you in...", icon=":material/check_circle:")
+                        st.session_state.authenticated = True
+                        st.session_state.user_email = signup_email
+                        st.session_state.user_name = signup_name
+                        load_chat_sessions() 
+                        st.rerun()
 
 def render_welcome_screen():
     """Render exactly like the Google Gemini welcome screen with contextual ideas."""
